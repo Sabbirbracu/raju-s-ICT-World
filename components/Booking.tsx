@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { Icon, LogoMark } from "./graphics";
 import { branches, courses, site, type Course } from "@/lib/site";
+import { validateBooking } from "@/lib/booking";
 
 /* ---------------------------- context ---------------------------- */
 
@@ -47,21 +48,20 @@ export function BookButton({
 
 /* ----------------------------- modal ----------------------------- */
 
-type Form = { name: string; phone: string; guardian: string; institution: string; note: string };
-type Errors = Partial<Record<keyof Form | "branch" | "time", string>>;
+type Form = { name: string; phone: string; guardian: string; institution: string; note: string; website: string };
+type Errors = Partial<Record<keyof Form | "course" | "branch" | "time", string>>;
 
-const BD_PHONE = /^(?:\+?88)?01[3-9]\d{8}$/;
 const bnDigits = "০১২৩৪৫৬৭৮৯";
-const normalizePhone = (v: string) =>
-  v.replace(/[০-৯]/g, (d) => String(bnDigits.indexOf(d))).replace(/[\s-]/g, "");
 
 function BookingModal({ initialCourse, onClose }: { initialCourse: Course; onClose: () => void }) {
   const [course, setCourse] = useState<Course>(initialCourse);
   const [branchId, setBranchId] = useState<string>("");
   const [time, setTime] = useState<string>("");
-  const [form, setForm] = useState<Form>({ name: "", phone: "", guardian: "", institution: "", note: "" });
+  const [form, setForm] = useState<Form>({ name: "", phone: "", guardian: "", institution: "", note: "", website: "" });
   const [errors, setErrors] = useState<Errors>({});
-  const [done, setDone] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [serverError, setServerError] = useState("");
+  const [done, setDone] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
 
   const branch = branches.find((b) => b.id === branchId);
@@ -94,37 +94,35 @@ function BookingModal({ initialCourse, onClose }: { initialCourse: Course; onClo
     setErrors((er) => ({ ...er, branch: undefined }));
   };
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const er: Errors = {};
-    if (!branch) er.branch = "একটি শাখা বেছে নাও";
-    if (!time) er.time = "একটি ব্যাচের সময় বেছে নাও";
-    if (form.name.trim().length < 2) er.name = "তোমার নাম লেখো";
-    if (!BD_PHONE.test(normalizePhone(form.phone))) er.phone = "সঠিক মোবাইল নম্বর দাও (01XXXXXXXXX)";
-    if (form.guardian && !BD_PHONE.test(normalizePhone(form.guardian))) er.guardian = "সঠিক নম্বর দাও";
-    if (form.institution.trim().length < 2) er.institution = "স্কুল/কলেজের নাম লেখো";
+    if (submitting) return;
+    const payload = { course, branchId, time, ...form };
+    const { errors: er } = validateBooking(payload);
     setErrors(er);
+    setServerError("");
     if (Object.keys(er).length) return;
 
-    const message = [
-      "🎓 ফ্রি ক্লাস বুকিং — Razu's ICT World",
-      "",
-      `কোর্স: ${course}`,
-      `শাখা: ${branch!.name}`,
-      `ব্যাচের সময়: ${time}`,
-      "",
-      `নাম: ${form.name.trim()}`,
-      `মোবাইল: ${normalizePhone(form.phone)}`,
-      form.guardian ? `অভিভাবকের মোবাইল: ${normalizePhone(form.guardian)}` : null,
-      `স্কুল/কলেজ: ${form.institution.trim()}`,
-      form.note.trim() ? `নোট: ${form.note.trim()}` : null,
-    ]
-      .filter((line) => line !== null)
-      .join("\n");
-
-    const url = `https://wa.me/${site.office.tel.replace("+", "")}?text=${encodeURIComponent(message)}`;
-    setDone(url);
-    window.open(url, "_blank", "noopener,noreferrer");
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/booking", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.ok) {
+        setDone(true);
+      } else if (json.errors) {
+        setErrors(json.errors);
+      } else {
+        setServerError(json.error || "কিছু একটা সমস্যা হয়েছে। একটু পরে আবার চেষ্টা করো।");
+      }
+    } catch {
+      setServerError("ইন্টারনেট সংযোগ চেক করে আবার চেষ্টা করো।");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -165,7 +163,7 @@ function BookingModal({ initialCourse, onClose }: { initialCourse: Course; onClo
           <div className="flex items-start justify-between gap-4 border-b border-navy/5 px-5 py-4 sm:px-7 sm:py-5">
             <div>
               <h2 id="booking-title" className="font-display text-xl font-extrabold text-navy sm:text-2xl">
-                {done ? "বুকিং রিকোয়েস্ট তৈরি!" : "ফ্রি ক্লাস বুক করো"}
+                {done ? "বুকিং সম্পন্ন হয়েছে" : "ফ্রি ক্লাস বুক করো"}
               </h2>
               {!done && <p className="mt-0.5 text-sm text-muted">মাত্র ১ মিনিট — তোমার সুবিধামতো ব্যাচ বেছে নাও</p>}
             </div>
@@ -182,7 +180,7 @@ function BookingModal({ initialCourse, onClose }: { initialCourse: Course; onClo
           </div>
 
           {done ? (
-            <Success url={done} course={course} branch={branch!.name} time={time} name={form.name} onClose={onClose} />
+            <Success course={course} branch={branch!.name} time={time} name={form.name} onClose={onClose} />
           ) : (
             <form onSubmit={submit} noValidate className="min-h-0 flex-1 space-y-7 overflow-y-auto px-5 pt-6 sm:px-7">
               {/* 1. course */}
@@ -279,14 +277,41 @@ function BookingModal({ initialCourse, onClose }: { initialCourse: Course; onClo
                 </div>
               </fieldset>
 
+              {/* honeypot for bots — hidden from people and screen readers */}
+              <input
+                type="text"
+                name="website"
+                value={form.website}
+                onChange={set("website")}
+                tabIndex={-1}
+                autoComplete="off"
+                aria-hidden="true"
+                className="hidden"
+              />
+
               <div className="sticky bottom-0 -mx-5 border-t border-navy/5 bg-white/95 px-5 py-4 backdrop-blur sm:-mx-7 sm:px-7">
                 <button
                   type="submit"
-                  className="group flex w-full items-center justify-center gap-2.5 rounded-xl bg-brand-red px-6 py-3.5 text-base font-bold text-white shadow-[0_14px_36px_-12px_rgba(225,29,46,.8)] transition hover:bg-brand-red-2"
+                  disabled={submitting}
+                  className="group flex w-full items-center justify-center gap-2.5 rounded-xl bg-brand-red px-6 py-3.5 text-base font-bold text-white shadow-[0_14px_36px_-12px_rgba(225,29,46,.8)] transition hover:bg-brand-red-2 disabled:cursor-wait disabled:opacity-70"
                 >
-                  ফ্রি ক্লাস বুক করো
-                  <Icon.arrow className="h-5 w-5 transition group-hover:translate-x-1" />
+                  {submitting ? (
+                    <>
+                      <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                      বুক করা হচ্ছে...
+                    </>
+                  ) : (
+                    <>
+                      ফ্রি ক্লাস বুক করো
+                      <Icon.arrow className="h-5 w-5 transition group-hover:translate-x-1" />
+                    </>
+                  )}
                 </button>
+                {serverError && (
+                  <p role="alert" className="mt-2 text-center text-sm font-medium text-brand-red">
+                    {serverError}
+                  </p>
+                )}
               </div>
             </form>
           )}
@@ -374,14 +399,12 @@ function SummaryRow({ label, value }: { label: string; value?: string }) {
 }
 
 function Success({
-  url,
   course,
   branch,
   time,
   name,
   onClose,
 }: {
-  url: string;
   course: string;
   branch: string;
   time: string;
@@ -395,7 +418,7 @@ function Success({
       </span>
       <h3 className="mt-5 font-display text-2xl font-extrabold text-navy">ধন্যবাদ, {name.trim()}!</h3>
       <p className="mt-2 max-w-sm text-muted">
-        WhatsApp-এ মেসেজটি <b className="text-ink">Send</b> করলেই বুকিং সম্পন্ন হবে। অফিস থেকে কল করে ক্লাস কনফার্ম করা হবে।
+        তোমার ফ্রি ক্লাস বুকিং আমরা পেয়েছি। অফিস থেকে শিগগিরই কল করে ক্লাস কনফার্ম করা হবে।
       </p>
       <div className="mt-6 w-full max-w-sm rounded-2xl bg-paper p-4 text-left text-sm ring-1 ring-navy/5">
         {[
@@ -409,17 +432,14 @@ function Success({
           </div>
         ))}
       </div>
-      <a
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="mt-6 inline-flex w-full max-w-sm items-center justify-center gap-2.5 rounded-xl bg-[#25d366] px-6 py-3.5 font-bold text-white shadow-lg shadow-[#25d366]/30 transition hover:brightness-105"
+      <button
+        type="button"
+        onClick={onClose}
+        className="mt-6 inline-flex w-full max-w-sm items-center justify-center rounded-xl bg-navy px-6 py-3.5 font-bold text-white transition hover:bg-navy-2"
       >
-        <Icon.whatsapp className="h-5 w-5" /> WhatsApp খুলে পাঠাও
-      </a>
-      <button type="button" onClick={onClose} className="mt-3 text-sm font-semibold text-muted hover:text-navy">
-        বন্ধ করো
+        ঠিক আছে
       </button>
+      <p className="mt-4 text-xs text-muted">কোনো প্রশ্ন থাকলে কল করো: {site.office.display}</p>
     </div>
   );
 }
