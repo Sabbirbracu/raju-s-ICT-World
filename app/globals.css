@@ -1,26 +1,79 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  --color-navy: #0b1650;
+  --color-navy-2: #12207a;
+  --color-royal: #1f3fb8;
+  --color-royal-2: #2f5be8;
+  --color-sky: #e8eeff;
+  --color-brand-red: #e11d2e;
+  --color-brand-red-2: #ff4757;
+  --color-sun: #ffd21f;
+  --color-leaf: #18a957;
+  --color-ink: #0b1435;
+  --color-muted: #5b6488;
+  --color-paper: #f6f8fd;
+
+  --font-sans: var(--font-hind), var(--font-anek), system-ui, sans-serif;
+  --font-display: var(--font-anek), var(--font-hind), system-ui, sans-serif;
+  --font-script: var(--font-galada), var(--font-hind), cursive;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 88px;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Quiet, asymmetric colour washes keep large sections tactile without a repeated template pattern. */
+.paper-wash {
+  background-image:
+    radial-gradient(ellipse 42% 34% at 4% 12%, rgba(31, 63, 184, 0.055), transparent 72%),
+    radial-gradient(ellipse 34% 28% at 96% 88%, rgba(225, 29, 46, 0.04), transparent 74%);
+}
+
+.ink-wash {
+  background-image:
+    radial-gradient(ellipse 48% 54% at 92% 4%, rgba(47, 91, 232, 0.28), transparent 72%),
+    radial-gradient(ellipse 30% 38% at 7% 96%, rgba(225, 29, 46, 0.1), transparent 78%),
+    linear-gradient(135deg, #0b1650 0%, #0a154d 56%, #101e68 100%);
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0) rotate(var(--r, 0deg)); }
+  50% { transform: translateY(-10px) rotate(var(--r, 0deg)); }
+}
+@keyframes spin-slow { to { transform: rotate(360deg); } }
+@keyframes marquee { to { transform: translateX(-50%); } }
+@keyframes dash { to { stroke-dashoffset: -40; } }
+@keyframes blink { 50% { opacity: 0; } }
+
+.animate-float { animation: float 6s ease-in-out infinite; }
+.animate-float-late { animation: float 7s ease-in-out 1.2s infinite; }
+.animate-spin-slow { animation: spin-slow 40s linear infinite; }
+.animate-marquee { animation: marquee 32s linear infinite; }
+.animate-dash { animation: dash 1.6s linear infinite; }
+.animate-blink { animation: blink 1s step-end infinite; }
+
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.7s ease, transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.reveal.in {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .animate-float, .animate-float-late, .animate-spin-slow, .animate-marquee, .animate-dash, .animate-blink {
+    animation: none;
+  }
+  .reveal { opacity: 1; transform: none; transition: none; }
 }
